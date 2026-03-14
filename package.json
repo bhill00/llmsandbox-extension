@@ -1,0 +1,168 @@
+{
+  "name": "llmsandbox-extension",
+  "displayName": "LLM Sandbox",
+  "description": "Agent-style coding assistant using UCSB LLM Sandbox Bot API",
+  "version": "0.1.0",
+  "publisher": "unsped",
+  "engines": {
+    "vscode": "^1.110.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "LLM Sandbox",
+      "properties": {
+        "llmsandbox.apiUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Bedrock API URL (e.g. https://xxx.execute-api.us-east-1.amazonaws.com/api)",
+          "order": 1
+        },
+        "llmsandbox.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Bedrock API key",
+          "order": 2
+        },
+        "llmsandbox.serverPort": {
+          "type": "number",
+          "default": 8765,
+          "description": "Local server port",
+          "order": 3
+        },
+        "llmsandbox.contextBudget": {
+          "type": "number",
+          "default": 20000,
+          "description": "Context budget in estimated tokens",
+          "order": 4
+        },
+        "llmsandbox.defaultModel": {
+          "type": "string",
+          "default": "claude-v4.5-sonnet",
+          "enum": [
+            "claude-v4.5-sonnet",
+            "claude-v4-sonnet",
+            "claude-v3.5-sonnet"
+          ],
+          "description": "Default model to use",
+          "order": 5
+        },
+        "llmsandbox.pythonPath": {
+          "type": "string",
+          "default": "python3",
+          "description": "Path to Python 3 executable",
+          "order": 6
+        },
+        "llmsandbox.contextStrategy": {
+          "type": "string",
+          "default": "summary",
+          "enum": [
+            "recent",
+            "summary",
+            "key-facts"
+          ],
+          "enumDescriptions": [
+            "Keep only the most recent turns (no LLM summarization overhead)",
+            "Generate a rolling prose summary of older turns",
+            "Extract structured key facts from older turns (better for long sessions)"
+          ],
+          "description": "How to compress conversation history when it exceeds the context budget",
+          "order": 7
+        },
+        "llmsandbox.recentTurnsToKeep": {
+          "type": "number",
+          "default": 6,
+          "minimum": 2,
+          "description": "Number of recent conversation turns to keep verbatim (applies to all strategies)",
+          "order": 8
+        },
+        "llmsandbox.enableReasoning": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable extended thinking/reasoning in the model's responses (slower but higher quality)",
+          "order": 9
+        },
+        "llmsandbox.autoIncludeActiveFile": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically include the currently open file as context in every message",
+          "order": 10
+        },
+        "llmsandbox.systemPrompt": {
+          "type": "string",
+          "default": "",
+          "description": "Custom system prompt. Leave empty to use the built-in coding assistant prompt.",
+          "editPresentation": "multilineText",
+          "order": 11
+        },
+        "llmsandbox.pollInterval": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "description": "Seconds between polling attempts when waiting for a response",
+          "order": 12
+        },
+        "llmsandbox.pollTimeout": {
+          "type": "number",
+          "default": 30,
+          "minimum": 5,
+          "description": "Maximum seconds to wait for a response before timing out",
+          "order": 13
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "llmsandbox",
+          "title": "LLM Sandbox",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "llmsandbox": [
+        {
+          "type": "webview",
+          "id": "llmsandbox.chat",
+          "name": "Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "llmsandbox.resetConversation",
+        "title": "LLM Sandbox: Reset Conversation"
+      },
+      {
+        "command": "llmsandbox.setModel",
+        "title": "LLM Sandbox: Switch Model"
+      },
+      {
+        "command": "llmsandbox.startServer",
+        "title": "LLM Sandbox: Start Server"
+      },
+      {
+        "command": "llmsandbox.stopServer",
+        "title": "LLM Sandbox: Stop Server"
+      },
+      {
+        "command": "llmsandbox.restartServer",
+        "title": "LLM Sandbox: Restart Server"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "@types/vscode": "^1.110.0",
+    "@vscode/vsce": "^3.7.1",
+    "typescript": "^5.9.3"
+  }
+}
