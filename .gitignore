@@ -2,3 +2,6 @@ node_modules/
 .venv/
 .claude/
 .DS_Store
+CLAUDE.md
+*.js.map
+package-lock.json
