@@ -76,6 +76,19 @@ Poll: GET {API_URL}/conversation/{conversation_id} → messageMap[server_message
 Thread: Use the server-returned messageId (ULID) as parent_message_id in your next call
 Models: Claude (claude-v4.5-sonnet, claude-v4-sonnet, claude-v3.5-sonnet), Amazon Nova, and other Bedrock models
 
+## Next Steps: Local LLM Orchestration
+
+The token cost problem suggests a natural improvement: a local small LLM (Qwen, Llama, Mistral via Ollama) that handles the routine work — context management, summarization, RAG retrieval, routing simple questions — and only defers to the Sandbox for tasks requiring full Claude-level reasoning. This could dramatically reduce token burn.
+
+But NIST 800-171 compliance applies to the entire data pipeline, not just the final API call. If you're working with CUI, the orchestration layer must meet the same requirements. Key questions:
+
+- Where does the local model run? A personal laptop may not qualify. A university-managed system with FDE and proper access controls may.
+- Where is context stored? In-memory session state is different from persisting to disk. Written controlled data needs compliant storage.
+- What does the local model see? If it processes CUI, its runtime is in scope. If it only sees metadata (turn counts, topic labels), the exposure is different.
+- Vector stores (ChromaDB etc.) with embeddings of controlled data are likely in scope.
+
+The safest approach: a metadata-only local layer that tracks conversation structure and routing decisions but never sees controlled content. The Sandbox handles all content processing. This keeps the compliance boundary clean while reducing orchestration token burn.
+
 ## Bottom Line
 
-LLM Sandbox gives you LLM access with strong privacy guarantees. The tradeoff is that the API is lower-level than what you're used to — no conversation memory, no streaming, no prompt caching, async polling. The chat UI abstracts this away for interactive use, but if you're building bots or tools on top of it, you need to handle context management and polling yourself. And watch your token burn — long conversations get expensive fast.
+LLM Sandbox gives you LLM access with strong privacy guarantees. The tradeoff is that the API is lower-level than what you're used to — no conversation memory, no streaming, no prompt caching, async polling. The chat UI abstracts this away for interactive use, but if you're building bots or tools on top of it, you need to handle context management and polling yourself. Watch your token burn — long conversations get expensive fast. And if you're building a local orchestration layer, think carefully about where your compliance boundary sits before piping CUI through a local model.

@@ -113,6 +113,23 @@ All three are implemented in this extension's `server.py` if you want reference 
 
 **Available models:** Claude (claude-v4.5-sonnet, claude-v4-sonnet, claude-v3.5-sonnet), Amazon Nova, and other AWS Bedrock models available in the sandbox.
 
+### Next Steps: Local LLM Orchestration Layer
+
+The token cost problem and lack of prompt caching suggest a natural architecture improvement: a **local small LLM** (e.g. Qwen, Llama, Mistral via Ollama) that handles the routine work — maintaining conversational context, summarizing history, doing RAG retrieval, routing simple questions — and only defers to the Sandbox API for tasks that require the full reasoning capability of Claude or other large models.
+
+This could dramatically reduce token burn by keeping most of the "context bookkeeping" local and only sending well-formed, compressed prompts to the Sandbox when advanced reasoning is needed.
+
+**However: NIST 800-171 compliance applies to the entire data pipeline, not just the final API call.** If you're working with CUI or controlled data, the orchestration layer itself must meet the same compliance requirements:
+
+- **Where does the local model run?** A personal laptop may not meet the physical security or access control requirements. A university-managed system with FDE and proper access controls may.
+- **Where is context stored?** In-memory session state that disappears on restart is very different from persisting conversation history to disk or a local database. The moment you write controlled data to storage, that storage needs to be compliant.
+- **What does the local model see?** If the local LLM processes the full conversation including CUI, that model's runtime environment is in scope for NIST controls. If it only sees metadata (turn counts, topic labels, non-sensitive summaries), the exposure is different.
+- **Vector stores for RAG** — embedding controlled data into a local ChromaDB or similar is convenient, but those embeddings are derived from controlled data and likely in scope.
+
+The safest approach is a **metadata-only local layer** that tracks conversation structure, manages turn counts, and handles routing decisions — but never sees the actual content of controlled messages. The Sandbox handles all content processing. This keeps the compliance boundary clean while still reducing token burn for the orchestration overhead.
+
+This is an area of active exploration. If you're building something like this, think carefully about where your compliance boundary sits before you start piping CUI through a local model.
+
 ---
 
 ## Extension Features
