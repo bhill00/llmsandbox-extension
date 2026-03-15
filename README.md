@@ -2,6 +2,8 @@
 
 A Cline-style AI coding assistant for VS Code that connects to the UCSB LLM Sandbox Bot API. Features a sidebar chat interface with file awareness, inline diffs, model switching, and configurable context management.
 
+![LLM Sandbox Screenshot](SCREENSHOT.png)
+
 ## Features
 
 - **Sidebar chat panel** with markdown rendering and code blocks
@@ -52,6 +54,8 @@ code --install-extension llmsandbox-extension-0.1.0.vsix
 Or in VS Code: Extensions sidebar > `...` menu > "Install from VSIX..."
 
 ### From source
+
+See [BUILDING.md](BUILDING.md) for full build instructions. Quick version:
 
 ```bash
 git clone https://github.com/bhill00/llmsandbox-extension.git
