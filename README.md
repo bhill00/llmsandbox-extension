@@ -18,17 +18,17 @@ LLM Sandbox is a **privacy-by-design** deployment of LLMs via AWS Bedrock, desig
 
 **It is not** a drop-in replacement for the Anthropic API, OpenAI API, or any standard cloud LLM workflow. The architecture is fundamentally different and imposes constraints you need to design around.
 
-### The Two Big Differences
+### The Two Big Differences vs. Anthropic / OpenAI APIs
 
-**1. No structured messages, no context management layer**
+**1. No structured messages, no prompt caching**
 
-All LLM APIs are stateless — no API remembers previous calls. The client always manages conversation history. But there are important differences in what the API gives you to work with.
+All LLM APIs are stateless — the client always manages conversation history and sends it with every request. The difference is what the API accepts.
 
-The Anthropic and OpenAI APIs accept a structured `messages[]` array where each turn is tagged with a role (system/user/assistant). The model sees distinct conversation turns with proper boundaries. These APIs also provide features like prompt caching, system message handling, and token counting that help you manage context efficiently.
+The Anthropic and OpenAI APIs accept a structured `messages[]` array where each turn is tagged with a role (system/user/assistant). The model sees distinct conversation turns with proper boundaries. These APIs also support prompt caching — when your request starts with the same prefix as a previous request, those repeated tokens are discounted (up to 90% cheaper).
 
-The LLM Sandbox Bot API has **none of this**. It accepts a single text message — no messages array, no roles, no system message parameter. If you want multi-turn conversation, you must flatten your entire history into one text blob (e.g. `"User: ...\nAssistant: ...\nUser: ..."`), losing structured role boundaries. There is no context management layer between you and the model — you are responsible for assembling the complete prompt yourself.
+The LLM Sandbox Bot API accepts a **single text message** — no messages array, no roles, no system message parameter, no prompt caching. If you want multi-turn conversation, you flatten your entire history into one text blob (e.g. `"User: ...\nAssistant: ...\nUser: ..."`), losing structured role boundaries. Every token is full price, every turn.
 
-The API does store conversation records in DynamoDB (message IDs, threading), but it does **not** automatically prepend prior messages to your request. The chat UI in LLM Sandbox handles context reconstruction via DynamoDB before each call, but if you're building your own bot or tool, you need to implement this yourself.
+The API does store conversation records in DynamoDB (message IDs, threading), but it does **not** prepend prior messages to your request. The chat UI in LLM Sandbox handles context reconstruction via DynamoDB before each call, but if you're building your own bot or tool, you need to implement this yourself.
 
 The pattern:
 ```
@@ -37,7 +37,7 @@ Your message to the API = prior context you assembled + the actual new message
 
 Store the original user input in your history, not the full context-stuffed payload. If you store the full message (which already includes prior context), the next turn prepends that doubled context again, and it compounds exponentially. Only store what the user actually typed.
 
-**2. The API is async — no streaming, no immediate responses**
+**2. Async responses — no streaming**
 
 POST returns a message ID. You poll a GET endpoint until the response shows up as a child of that message.
 

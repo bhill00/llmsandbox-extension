@@ -8,21 +8,21 @@ LLM Sandbox is a **privacy-by-design** deployment of LLMs via AWS Bedrock, desig
 
 **Note:** The API endpoint's compliance does not automatically extend to tools that consume it. If you're working with controlled data (CUI, ITAR, FERPA), consult your security/compliance team before using any third-party tools with the Sandbox.
 
-## The Two Big Differences
+## The Two Big Differences vs. Anthropic / OpenAI APIs
 
-### 1. No structured messages, no context management layer
+### 1. No structured messages, no prompt caching
 
-All LLM APIs are stateless — the client always manages conversation history. But the Anthropic and OpenAI APIs accept a structured messages[] array with role-tagged turns, plus features like prompt caching and system message handling that help manage context efficiently.
+All LLM APIs are stateless — the client always manages conversation history. The difference is what the API accepts. Anthropic and OpenAI accept a structured messages[] array with role-tagged turns and support prompt caching (repeated prefixes cost up to 90% less).
 
-The LLM Sandbox Bot API has none of this. Single text message input, no messages array, no roles, no system parameter. You flatten your entire history into one text blob, losing structured role boundaries. There is no context management layer between you and the model.
+The LLM Sandbox Bot API accepts a single text message — no messages array, no roles, no system parameter, no prompt caching. You flatten your entire history into one text blob, losing structured role boundaries. Every token is full price, every turn.
 
-The API stores conversation records in DynamoDB (message IDs, threading), but does not prepend prior messages for you. The chat UI handles this reconstruction, but if you're building your own tool, you implement it yourself.
+The API stores conversation records in DynamoDB (message IDs, threading), but does not prepend prior messages for you. The chat UI handles reconstruction, but if you're building your own tool, you implement it yourself.
 
 The pattern: Your message to the API = prior context you assembled + the actual new message
 
 Store the original user input in your history, not the full context-stuffed payload — otherwise context compounds exponentially.
 
-### 2. The API is async — no streaming, no immediate responses
+### 2. Async responses — no streaming
 
 POST returns a message ID. You poll a GET endpoint until the response shows up as a child of that message. There are no webhooks, no streaming, no server-sent events. Plan your UX around a loading spinner, not a typing indicator.
 
