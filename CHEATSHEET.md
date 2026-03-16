@@ -14,17 +14,26 @@ LLM Sandbox is a **privacy-by-design** deployment of LLMs via AWS Bedrock, desig
 
 All LLM APIs are stateless — the client always manages conversation history. The difference is what the API accepts. Anthropic and OpenAI accept a structured messages[] array with role-tagged turns and support prompt caching (repeated prefixes cost up to 90% less).
 
-The LLM Sandbox Bot API accepts a single text message — no messages array, no roles, no system parameter, no prompt caching. You flatten your entire history into one text blob, losing structured role boundaries. Every token is full price, every turn.
+The LLM Sandbox Bot API accepts a single text message per request — no messages array, no roles, no system parameter, no prompt caching. Every token is full price, every turn.
 
-The API stores conversation records server-side, but from your perspective as a developer, treat each request as independent. If you're building your own tool, you manage conversation history and context assembly yourself.
+The API does have **server-side conversation memory** — if you reuse a `conversationId`, the server reconstructs prior turns automatically. You can either:
 
-The pattern: Your message to the API = prior context you assembled + the actual new message
+- **Send only the latest message** and let the server handle history (simpler, but you lose control over what context the model sees)
+- **Manage context client-side** and send a fresh `conversationId` each call (more work, but lets you compress/prioritize context)
 
-Store the original user input in your history, not the full context-stuffed payload — otherwise context compounds exponentially.
+This extension uses client-side management for better control over token costs. If you're building a simpler tool, server-side memory works fine — see the [proxy](https://github.com/bhill00/llmsandbox-openai-proxy) for an example.
+
+If you do manage context client-side, store the original user input in your history, not the full context-stuffed payload — otherwise context compounds exponentially.
 
 ### 2. Async responses — no streaming
 
-POST returns a message ID. You poll a GET endpoint until the response shows up as a child of that message. There are no webhooks, no streaming, no server-sent events. Plan your UX around a loading spinner, not a typing indicator.
+POST returns a message ID. You poll a per-message GET endpoint until the response appears.
+
+```
+POST /conversation → returns messageId → poll GET /conversation/{convId}/{messageId} → reply when role is "assistant"
+```
+
+There are no webhooks, no streaming, no server-sent events. The per-message endpoint returns 404 while the reply is being generated — treat this as "not ready yet" and keep polling. Plan your UX around a loading spinner, not a typing indicator.
 
 ## Understanding Context, Tokens, and Cost
 
@@ -70,20 +79,31 @@ There are also server-side infrastructure limits — API Gateway has a 10MB payl
 ## When NOT to Use LLM Sandbox
 
 - You need streaming responses (not supported)
-- You need the standard Anthropic/OpenAI messages API (not compatible)
-- You're building something that depends on structured messages[] input or OpenAI-style structured function calling (prompt-engineered tool use does work)
+- You need the standard Anthropic/OpenAI messages API (not directly compatible — but the [proxy](https://github.com/bhill00/llmsandbox-openai-proxy) bridges this gap)
+- You're building something that depends on OpenAI-style structured function calling (prompt-engineered tool use does work — see the [proxy README](https://github.com/bhill00/llmsandbox-openai-proxy#a-note-on-tool-use--function-calling))
 - You need low-latency, high-throughput production workloads
 - Your data has no compliance requirements and a commercial API would be simpler
 
 ## Quick API Reference
 
-Auth: x-api-key header
-Send: POST {API_URL}/conversation
-Poll: GET {API_URL}/conversation/{conversation_id} → messageMap[server_message_id].children[0] is your reply
-Thread: Use the server-returned messageId (ULID) as parent_message_id in your next call
-Models: Check with your sandbox administrator. Common ones include Claude (claude-v4.5-sonnet, claude-v4-sonnet, claude-v3.5-sonnet) and Amazon Nova.
-Content types: Text and images (base64) confirmed working. Format: [{"contentType": "text", "body": "..."}, {"contentType": "image", "mediaType": "image/png", "body": "<base64>"}]
-Agent mode: If enabled on the bot, server-side tools (Internet Search, Knowledge Base) execute automatically. Client just sends a message and gets the final answer. Client-side structured tool calling (OpenAI-style tools array) is not supported.
+**Auth:** `x-api-key` header
+
+**Send:** `POST {API_URL}/conversation`
+
+**Poll:** `GET {API_URL}/conversation/{conversationId}/{messageId}` → reply when `message.role` is `"assistant"`
+
+**Server memory:** Reuse the same `conversationId` across calls and the server reconstructs history automatically. Send a fresh `conversationId` each call if you manage context client-side.
+
+**Switch models:** Just change the `model` string in the payload.
+
+**Available models:** claude-v4.6-opus, claude-v4.5-opus, claude-v4.5-sonnet, claude-v4.5-haiku, amazon-nova-pro, amazon-nova-lite, amazon-nova-micro, qwen3-32b. The model string is passed directly to the API.
+
+**Content types:** The API's message content field is a list, supporting multiple content types per message:
+- Text: `{"contentType": "text", "body": "..."}`
+- Images: `{"contentType": "image", "mediaType": "image/png", "body": "<base64>"}`
+- Documents: `{"contentType": "attachment", "fileName": "doc.pdf", "mediaType": "application/pdf", "body": "<base64>"}` — supports PDF, Word, Excel, CSV, HTML, Markdown, plain text
+
+**Agent mode / server-side tools:** If you enable Agent mode when creating your bot, the backend can execute tools autonomously. Internet Search and Knowledge Base (RAG) are available. These execute server-side — the client just sends a normal message and gets the final answer. No special client code needed. Client-side structured tool calling (OpenAI-style `tools` array) is not supported — tools must be configured on the bot.
 
 ## Next Steps: Local LLM Orchestration
 
@@ -100,4 +120,4 @@ The safest approach: a metadata-only local layer that tracks conversation struct
 
 ## Bottom Line
 
-LLM Sandbox gives you LLM access with strong privacy guarantees. The tradeoff is that the API is lower-level than what you're used to — no conversation memory, no streaming, no prompt caching, async polling. The chat UI abstracts this away for interactive use, but if you're building bots or tools on top of it, you need to handle context management and polling yourself. Watch your token burn — long conversations get expensive fast. And if you're building a local orchestration layer, think carefully about where your compliance boundary sits before piping CUI through a local model.
+LLM Sandbox gives you LLM access with strong privacy guarantees. The tradeoff is that the API is lower-level than what you're used to — no streaming, no prompt caching, no structured messages array, async polling. The API does have server-side conversation memory (reuse a conversationId), but no prompt caching means every token is full price every turn. If you're building tools on top of it, you need to decide between server-side memory (simpler) or client-side context management (more control). Watch your token burn — long conversations get expensive fast. The [OpenAI-compatible proxy](https://github.com/bhill00/llmsandbox-openai-proxy) can bridge the gap if you need standard API compatibility. And if you're building a local orchestration layer, think carefully about where your compliance boundary sits before piping CUI through a local model.

@@ -63,8 +63,6 @@ SYSTEM_PROMPT = CUSTOM_SYSTEM_PROMPT if CUSTOM_SYSTEM_PROMPT else DEFAULT_SYSTEM
 # ---------------------------------------------------------------------------
 # Session state
 # ---------------------------------------------------------------------------
-conversation_id: str = str(uuid.uuid4())
-parent_message_id: str | None = None
 history: list[tuple[str, str]] = []       # all (role, msg) pairs
 rolling_summary: str = ""                  # compressed older context
 current_model: str = "claude-v4.5-sonnet"
@@ -96,34 +94,27 @@ def estimate_tokens(text: str) -> int:
 def _send_and_poll(message_text: str) -> str:
     """Fire a one-shot message to the Bot API and poll for the reply.
 
-    Always uses enable_reasoning=False since this is for internal
-    summarization/extraction calls, not user-facing queries.
+    Uses a fresh conversation each call since this is for internal
+    summarization/extraction, not user-facing queries.
     """
-    global parent_message_id
-
-    msg_id = str(uuid.uuid4())
+    conv_id = str(uuid.uuid4())
     payload = {
-        "conversation_id": conversation_id,
+        "conversationId": conv_id,
         "message": {
-            "role": "user",
             "content": [{"contentType": "text", "body": message_text}],
             "model": current_model,
-            "parent_message_id": parent_message_id,
-            "message_id": msg_id,
         },
-        "continue_generate": False,
-        "enable_reasoning": False,
+        "continueGenerate": False,
+        "enableReasoning": False,
     }
 
     post_resp = requests.post(
         f"{API_URL}/conversation", headers=BOT_HEADERS, json=payload
     )
     post_resp.raise_for_status()
-    server_id = post_resp.json().get("messageId", msg_id)
+    server_id = post_resp.json().get("messageId")
 
-    reply = poll_for_reply(server_id)
-    parent_message_id = server_id
-    return reply
+    return poll_for_reply(conv_id, server_id)
 
 
 # ---------------------------------------------------------------------------
@@ -327,29 +318,27 @@ def build_context(
 # ---------------------------------------------------------------------------
 # Polling
 # ---------------------------------------------------------------------------
-def poll_for_reply(user_message_id: str) -> str:
-    for _ in range(POLL_MAX_ATTEMPTS):
+def poll_for_reply(conv_id: str, message_id: str) -> str:
+    """Poll the per-message endpoint until the assistant reply appears."""
+    for attempt in range(POLL_MAX_ATTEMPTS):
         time.sleep(POLL_INTERVAL)
         resp = requests.get(
-            f"{API_URL}/conversation/{conversation_id}",
+            f"{API_URL}/conversation/{conv_id}/{message_id}",
             headers=BOT_HEADERS,
         )
+        if resp.status_code == 404:
+            log.debug("Poll attempt %d/%d — reply not created yet", attempt + 1, POLL_MAX_ATTEMPTS)
+            continue
         resp.raise_for_status()
         data = resp.json()
 
-        msg_map = data.get("messageMap", {})
-        user_msg = msg_map.get(user_message_id, {})
-        children = user_msg.get("children", [])
-        if children:
-            assistant_msg = msg_map.get(children[0], {})
-            if assistant_msg.get("role") == "assistant":
-                return assistant_msg.get("content", [{}])[0].get("body", "")
+        msg = data.get("message", {})
+        if msg.get("role") == "assistant":
+            content = msg.get("content", [])
+            if content:
+                return content[0].get("body", "")
 
-        # Fallback: check lastMessageId
-        last_id = data.get("lastMessageId")
-        last_msg = msg_map.get(last_id, {})
-        if last_msg.get("role") == "assistant":
-            return last_msg.get("content", [{}])[0].get("body", "")
+        log.debug("Poll attempt %d/%d — no reply yet", attempt + 1, POLL_MAX_ATTEMPTS)
 
     raise HTTPException(status_code=504, detail="Timed out waiting for response")
 
@@ -359,7 +348,7 @@ def poll_for_reply(user_message_id: str) -> str:
 # ---------------------------------------------------------------------------
 @app.post("/chat")
 def chat(req: ChatRequest):
-    global parent_message_id, current_model
+    global current_model
 
     if req.model:
         current_model = req.model
@@ -368,45 +357,39 @@ def chat(req: ChatRequest):
     maybe_compress_history()
 
     full_message = build_context(req.message, req.active_file, req.active_file_content)
-    message_id = str(uuid.uuid4())
+    conv_id = str(uuid.uuid4())  # fresh conversation each call — we manage context client-side
 
     payload = {
-        "conversation_id": conversation_id,
+        "conversationId": conv_id,
         "message": {
-            "role": "user",
             "content": [{"contentType": "text", "body": full_message}],
             "model": current_model,
-            "parent_message_id": parent_message_id,
-            "message_id": message_id,
         },
-        "continue_generate": False,
-        "enable_reasoning": ENABLE_REASONING,
+        "continueGenerate": False,
+        "enableReasoning": ENABLE_REASONING,
     }
 
     post_resp = requests.post(
         f"{API_URL}/conversation", headers=BOT_HEADERS, json=payload
     )
     post_resp.raise_for_status()
-    server_message_id = post_resp.json().get("messageId", message_id)
+    server_message_id = post_resp.json().get("messageId")
 
-    reply = poll_for_reply(server_message_id)
+    reply = poll_for_reply(conv_id, server_message_id)
 
     # Store original input (not the full context) to avoid compounding
     history.append(("user", req.message))
     history.append(("assistant", reply))
-    parent_message_id = server_message_id
 
     return {"reply": reply, "model": current_model}
 
 
 @app.post("/reset")
 def reset():
-    global conversation_id, parent_message_id, history, rolling_summary
-    conversation_id = str(uuid.uuid4())
-    parent_message_id = None
+    global history, rolling_summary
     history = []
     rolling_summary = ""
-    return {"conversation_id": conversation_id}
+    return {"status": "reset"}
 
 
 @app.post("/model")
@@ -419,7 +402,6 @@ def set_model(req: ModelRequest):
 @app.get("/status")
 def status():
     return {
-        "conversation_id": conversation_id,
         "model": current_model,
         "message_count": len(history),
         "summary_tokens": estimate_tokens(rolling_summary),

@@ -26,26 +26,26 @@ All LLM APIs are stateless — the client always manages conversation history an
 
 The Anthropic and OpenAI APIs accept a structured `messages[]` array where each turn is tagged with a role (system/user/assistant). The model sees distinct conversation turns with proper boundaries. These APIs also support prompt caching — when your request starts with the same prefix as a previous request, those repeated tokens are discounted (up to 90% cheaper).
 
-The LLM Sandbox Bot API accepts a **single text message** — no messages array, no roles, no system message parameter, no prompt caching. If you want multi-turn conversation, you flatten your entire history into one text blob (e.g. `"User: ...\nAssistant: ...\nUser: ..."`), losing structured role boundaries. Every token is full price, every turn.
+The LLM Sandbox Bot API accepts a **single text message** per request — no messages array, no roles, no system message parameter, no prompt caching. Every token is full price, every turn.
 
-The API stores conversation records server-side, but from your perspective as a developer, you should treat each request as independent. If you're building your own bot or tool, you need to manage conversation history and context assembly yourself.
+The API does have **server-side conversation memory** — if you reuse a `conversationId`, the server reconstructs prior turns automatically. You can either:
 
-The pattern:
-```
-Your message to the API = prior context you assembled + the actual new message
-```
+- **Send only the latest message** and let the server handle history (simpler, but you lose control over what context the model sees)
+- **Manage context client-side** and send a fresh `conversationId` each call (more work, but lets you compress/prioritize context)
 
-Store the original user input in your history, not the full context-stuffed payload. If you store the full message (which already includes prior context), the next turn prepends that doubled context again, and it compounds exponentially. Only store what the user actually typed.
+This extension uses client-side management for better control over token costs. If you're building a simpler tool, server-side memory works fine — see the [proxy](https://github.com/bhill00/llmsandbox-openai-proxy) for an example.
+
+If you do manage context client-side, store the original user input in your history, not the full context-stuffed payload. If you store the full message (which already includes prior context), the next turn prepends that doubled context again, and it compounds exponentially. Only store what the user actually typed.
 
 **2. Async responses — no streaming**
 
-POST returns a message ID. You poll a GET endpoint until the response shows up as a child of that message.
+POST returns a message ID. You poll a GET endpoint until the response appears.
 
 ```
-POST /conversation → returns messageId → poll GET /conversation/{id} → find reply in messageMap
+POST /conversation → returns messageId → poll GET /conversation/{convId}/{messageId} → reply when role is "assistant"
 ```
 
-There are no webhooks, no streaming, no server-sent events. Plan your UX around a loading spinner, not a typing indicator.
+There are no webhooks, no streaming, no server-sent events. Plan your UX around a loading spinner, not a typing indicator. The per-message endpoint returns 404 while the reply is being generated — treat this as "not ready yet" and keep polling.
 
 ### Understanding Context, Tokens, and Cost
 
@@ -108,8 +108,8 @@ All three are implemented in this extension's `server.py` if you want reference 
 ### When NOT to Use LLM Sandbox
 
 - You need streaming responses (not supported)
-- You need the standard Anthropic/OpenAI messages API (not compatible)
-- You're building something that depends on structured messages[] input or OpenAI-style structured function calling (prompt-engineered tool use does work — see the [proxy README](https://github.com/bhill00/llmsandbox-openai-proxy#a-note-on-tool-use--function-calling))
+- You need the standard Anthropic/OpenAI messages API (not directly compatible — but the [proxy](https://github.com/bhill00/llmsandbox-openai-proxy) bridges this gap)
+- You're building something that depends on OpenAI-style structured function calling (prompt-engineered tool use does work — see the [proxy README](https://github.com/bhill00/llmsandbox-openai-proxy#a-note-on-tool-use--function-calling))
 - You need low-latency, high-throughput production workloads
 - Your data has no compliance requirements and a commercial API would be simpler
 
@@ -119,17 +119,20 @@ All three are implemented in this extension's `server.py` if you want reference 
 
 **Send:** `POST {API_URL}/conversation`
 
-**Poll:** `GET {API_URL}/conversation/{conversation_id}` → `messageMap[server_message_id].children[0]` is your reply
+**Poll:** `GET {API_URL}/conversation/{conversationId}/{messageId}` → reply when `message.role` is `"assistant"`
 
-**Thread messages:** Use the server-returned `messageId` (a ULID, not your UUID) as `parent_message_id` in your next call.
+**Server memory:** Reuse the same `conversationId` across calls and the server reconstructs history automatically. Send a fresh `conversationId` each call if you manage context client-side.
 
-**Switch models:** Just change the `model` string in the payload. Context is client-managed, so there's no session to rebuild.
+**Switch models:** Just change the `model` string in the payload.
 
-**Available models:** Check with your sandbox administrator for the exact list. Common models include Claude (claude-v4.5-sonnet, claude-v4-sonnet, claude-v3.5-sonnet) and Amazon Nova. The model string is passed directly to the API.
+**Available models:** claude-v4.6-opus, claude-v4.5-opus, claude-v4.5-sonnet, claude-v4.5-haiku, amazon-nova-pro, amazon-nova-lite, amazon-nova-micro, qwen3-32b. The model string is passed directly to the API.
 
-**Content types:** The API's message content field is a list, supporting multiple content types per message. Text and images (base64-encoded) are confirmed working. The content format is `[{"contentType": "text", "body": "..."}, {"contentType": "image", "mediaType": "image/png", "body": "<base64>"}]`.
+**Content types:** The API's message content field is a list, supporting multiple content types per message:
+- Text: `{"contentType": "text", "body": "..."}`
+- Images: `{"contentType": "image", "mediaType": "image/png", "body": "<base64>"}`
+- Documents: `{"contentType": "attachment", "fileName": "doc.pdf", "mediaType": "application/pdf", "body": "<base64>"}` — supports PDF, Word, Excel, CSV, HTML, Markdown, plain text
 
-**Agent mode / server-side tools:** If you enable Agent mode when creating your bot, the backend can execute tools autonomously. Internet Search (DuckDuckGo) and Knowledge Base (RAG over uploaded documents) are available. These execute server-side — the client just sends a normal message and gets the final answer. No special client code needed. Note: client-side structured tool calling (OpenAI-style `tools` array in the request) is not supported — tools must be configured on the bot.
+**Agent mode / server-side tools:** If you enable Agent mode when creating your bot, the backend can execute tools autonomously. Internet Search and Knowledge Base (RAG) are available. These execute server-side — the client just sends a normal message and gets the final answer. No special client code needed. Client-side structured tool calling (OpenAI-style `tools` array) is not supported — tools must be configured on the bot.
 
 ### Next Steps: Local LLM Orchestration Layer
 
