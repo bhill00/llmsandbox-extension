@@ -16,7 +16,7 @@ All LLM APIs are stateless — the client always manages conversation history. T
 
 The LLM Sandbox Bot API accepts a single text message — no messages array, no roles, no system parameter, no prompt caching. You flatten your entire history into one text blob, losing structured role boundaries. Every token is full price, every turn.
 
-The API stores conversation records in DynamoDB (message IDs, threading), but does not prepend prior messages for you. The chat UI handles reconstruction, but if you're building your own tool, you implement it yourself.
+The API stores conversation records server-side, but from your perspective as a developer, treat each request as independent. If you're building your own tool, you manage conversation history and context assembly yourself.
 
 The pattern: Your message to the API = prior context you assembled + the actual new message
 
@@ -50,7 +50,7 @@ Cumulative total over 20 turns: ~100,000+ input tokens. And this only counts inp
 
 Once you hit your context budget cap, every subsequent turn costs ~budget-size input tokens. Keep conversations short and reset often.
 
-There are also server-side infrastructure limits — API Gateway has a 10MB payload limit, DynamoDB items cap at 400KB. Long conversations with large code blocks may cause slow responses or errors.
+There are also server-side infrastructure limits — API Gateway has a 10MB payload limit, and conversation data grows with every turn. Long conversations with large code blocks may cause slow responses or errors.
 
 ## Context Compression Strategies
 

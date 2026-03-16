@@ -28,7 +28,7 @@ The Anthropic and OpenAI APIs accept a structured `messages[]` array where each 
 
 The LLM Sandbox Bot API accepts a **single text message** — no messages array, no roles, no system message parameter, no prompt caching. If you want multi-turn conversation, you flatten your entire history into one text blob (e.g. `"User: ...\nAssistant: ...\nUser: ..."`), losing structured role boundaries. Every token is full price, every turn.
 
-The API does store conversation records in DynamoDB (message IDs, threading), but it does **not** prepend prior messages to your request. The chat UI in LLM Sandbox handles context reconstruction via DynamoDB before each call, but if you're building your own bot or tool, you need to implement this yourself.
+The API stores conversation records server-side, but from your perspective as a developer, you should treat each request as independent. If you're building your own bot or tool, you need to manage conversation history and context assembly yourself.
 
 The pattern:
 ```
@@ -81,7 +81,7 @@ Once you hit your context budget cap (say 20k tokens), every subsequent turn cos
 Beyond token cost, there are server-side infrastructure limits you should be aware of (these are not configurable by the user):
 
 - **AWS API Gateway** — 10MB payload limit, configurable timeout (default 29 seconds). Your outbound requests are typically small, but GET responses returning large messageMap histories may approach these limits.
-- **DynamoDB items** — 400KB per item. The server stores conversation data in DynamoDB, and the messageMap grows with every turn. Long conversations with large code blocks may cause slow responses or partial data.
+- **Server-side storage** — conversation data grows with every turn. Long conversations with large code blocks may cause slow responses or errors.
 - **Lambda** (if behind the gateway) — 6MB synchronous payload limit
 
 Long conversations will eventually hit these walls. If you notice degraded performance, reset the conversation.
