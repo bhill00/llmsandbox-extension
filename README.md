@@ -127,7 +127,9 @@ All three are implemented in this extension's `server.py` if you want reference 
 
 **Available models:** Check with your sandbox administrator for the exact list. Common models include Claude (claude-v4.5-sonnet, claude-v4-sonnet, claude-v3.5-sonnet) and Amazon Nova. The model string is passed directly to the API.
 
-**Content types:** The API's message content field is a list, supporting multiple content types per message. Text and images (base64-encoded) are confirmed working. The content format is `[{"contentType": "text", "body": "..."}, {"contentType": "image", "mediaType": "image/png", "body": "<base64>"}]`. Tool use content types (`toolUse`, `toolResult`) are accepted by the API but do not currently produce responses through the published Bot API.
+**Content types:** The API's message content field is a list, supporting multiple content types per message. Text and images (base64-encoded) are confirmed working. The content format is `[{"contentType": "text", "body": "..."}, {"contentType": "image", "mediaType": "image/png", "body": "<base64>"}]`.
+
+**Agent mode / server-side tools:** If you enable Agent mode when creating your bot, the backend can execute tools autonomously. Internet Search (DuckDuckGo) and Knowledge Base (RAG over uploaded documents) are available. These execute server-side — the client just sends a normal message and gets the final answer. No special client code needed. Note: client-side structured tool calling (OpenAI-style `tools` array in the request) is not supported — tools must be configured on the bot.
 
 ### Next Steps: Local LLM Orchestration Layer
 

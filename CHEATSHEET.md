@@ -82,7 +82,8 @@ Send: POST {API_URL}/conversation
 Poll: GET {API_URL}/conversation/{conversation_id} → messageMap[server_message_id].children[0] is your reply
 Thread: Use the server-returned messageId (ULID) as parent_message_id in your next call
 Models: Check with your sandbox administrator. Common ones include Claude (claude-v4.5-sonnet, claude-v4-sonnet, claude-v3.5-sonnet) and Amazon Nova.
-Content types: Text and images (base64) confirmed working. Format: [{"contentType": "text", "body": "..."}, {"contentType": "image", "mediaType": "image/png", "body": "<base64>"}]. Tool use content types are accepted but don't currently produce responses.
+Content types: Text and images (base64) confirmed working. Format: [{"contentType": "text", "body": "..."}, {"contentType": "image", "mediaType": "image/png", "body": "<base64>"}]
+Agent mode: If enabled on the bot, server-side tools (Internet Search, Knowledge Base) execute automatically. Client just sends a message and gets the final answer. Client-side structured tool calling (OpenAI-style tools array) is not supported.
 
 ## Next Steps: Local LLM Orchestration
 
