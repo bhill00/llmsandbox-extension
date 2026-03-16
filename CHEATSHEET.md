@@ -71,7 +71,7 @@ There are also server-side infrastructure limits — API Gateway has a 10MB payl
 
 - You need streaming responses (not supported)
 - You need the standard Anthropic/OpenAI messages API (not compatible)
-- You're building something that depends on structured messages[] input, function calling, or tool use
+- You're building something that depends on structured messages[] input or OpenAI-style structured function calling (prompt-engineered tool use does work)
 - You need low-latency, high-throughput production workloads
 - Your data has no compliance requirements and a commercial API would be simpler
 

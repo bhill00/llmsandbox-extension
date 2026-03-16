@@ -109,7 +109,7 @@ All three are implemented in this extension's `server.py` if you want reference 
 
 - You need streaming responses (not supported)
 - You need the standard Anthropic/OpenAI messages API (not compatible)
-- You're building something that depends on structured messages[] input, function calling, or tool use
+- You're building something that depends on structured messages[] input or OpenAI-style structured function calling (prompt-engineered tool use does work — see the [proxy README](https://github.com/bhill00/llmsandbox-openai-proxy#a-note-on-tool-use--function-calling))
 - You need low-latency, high-throughput production workloads
 - Your data has no compliance requirements and a commercial API would be simpler
 
