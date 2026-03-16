@@ -22,13 +22,15 @@ LLM Sandbox is a **privacy-by-design** deployment of LLMs via AWS Bedrock, desig
 
 **1. The model is stateless — it has no memory**
 
-Unlike the Anthropic or OpenAI APIs where you send a `messages[]` array and the API handles context, the LLM Sandbox Bot API sends one message at a time to the model. The model sees only what you put in that single message.
+All LLM APIs are stateless — no API remembers previous calls. The difference is how they accept input. The Anthropic and OpenAI APIs accept a structured `messages[]` array where each turn is tagged with a role (system/user/assistant), and the model processes them as distinct conversation turns. The client still manages and sends the full history every time, but the model sees proper structure.
+
+The LLM Sandbox Bot API accepts only a **single text message**. There is no messages array. If you want multi-turn conversation, you must flatten your history into one text blob (e.g. `"User: ...\nAssistant: ...\nUser: ..."`), which loses the structured role boundaries the model would otherwise see.
 
 The API does maintain conversation records in DynamoDB (message IDs, threading), but it does **not** automatically prepend prior messages to your request. The model only sees what you explicitly include.
 
 What this means for you:
 - If you want multi-turn conversation, YOU must maintain a history and prepend it to every message
-- The chat UI in LLM Sandbox handles this via DynamoDB — it reconstructs context from stored messages before each call. It is not using Anthropic's native conversation management.
+- The chat UI in LLM Sandbox handles this via DynamoDB — it reconstructs context from stored messages before each call. It is not using the structured messages[] format that Anthropic's API supports.
 - If you're building your own bot/tool, you need to implement this yourself
 
 The pattern:
@@ -110,7 +112,7 @@ All three are implemented in this extension's `server.py` if you want reference 
 
 - You need streaming responses (not supported)
 - You need the standard Anthropic/OpenAI messages API (not compatible)
-- You're building something that depends on native conversation management or tool use
+- You're building something that depends on structured messages[] input, function calling, or tool use
 - You need low-latency, high-throughput production workloads
 - Your data has no compliance requirements and a commercial API would be simpler
 
