@@ -20,18 +20,15 @@ LLM Sandbox is a **privacy-by-design** deployment of LLMs via AWS Bedrock, desig
 
 ### The Two Big Differences
 
-**1. The model is stateless — it has no memory**
+**1. No structured messages, no context management layer**
 
-All LLM APIs are stateless — no API remembers previous calls. The difference is how they accept input. The Anthropic and OpenAI APIs accept a structured `messages[]` array where each turn is tagged with a role (system/user/assistant), and the model processes them as distinct conversation turns. The client still manages and sends the full history every time, but the model sees proper structure.
+All LLM APIs are stateless — no API remembers previous calls. The client always manages conversation history. But there are important differences in what the API gives you to work with.
 
-The LLM Sandbox Bot API accepts only a **single text message**. There is no messages array. If you want multi-turn conversation, you must flatten your history into one text blob (e.g. `"User: ...\nAssistant: ...\nUser: ..."`), which loses the structured role boundaries the model would otherwise see.
+The Anthropic and OpenAI APIs accept a structured `messages[]` array where each turn is tagged with a role (system/user/assistant). The model sees distinct conversation turns with proper boundaries. These APIs also provide features like prompt caching, system message handling, and token counting that help you manage context efficiently.
 
-The API does maintain conversation records in DynamoDB (message IDs, threading), but it does **not** automatically prepend prior messages to your request. The model only sees what you explicitly include.
+The LLM Sandbox Bot API has **none of this**. It accepts a single text message — no messages array, no roles, no system message parameter. If you want multi-turn conversation, you must flatten your entire history into one text blob (e.g. `"User: ...\nAssistant: ...\nUser: ..."`), losing structured role boundaries. There is no context management layer between you and the model — you are responsible for assembling the complete prompt yourself.
 
-What this means for you:
-- If you want multi-turn conversation, YOU must maintain a history and prepend it to every message
-- The chat UI in LLM Sandbox handles this via DynamoDB — it reconstructs context from stored messages before each call. It is not using the structured messages[] format that Anthropic's API supports.
-- If you're building your own bot/tool, you need to implement this yourself
+The API does store conversation records in DynamoDB (message IDs, threading), but it does **not** automatically prepend prior messages to your request. The chat UI in LLM Sandbox handles context reconstruction via DynamoDB before each call, but if you're building your own bot or tool, you need to implement this yourself.
 
 The pattern:
 ```

@@ -10,22 +10,17 @@ LLM Sandbox is a **privacy-by-design** deployment of LLMs via AWS Bedrock, desig
 
 ## The Two Big Differences
 
-### 1. The model is stateless — it has no memory
+### 1. No structured messages, no context management layer
 
-All LLM APIs are stateless — no API remembers previous calls. The difference is how they accept input. Anthropic and OpenAI APIs accept a structured messages[] array where each turn is tagged with a role (system/user/assistant), and the model processes them as distinct conversation turns. The client still manages and sends the full history every time, but the model sees proper structure.
+All LLM APIs are stateless — the client always manages conversation history. But the Anthropic and OpenAI APIs accept a structured messages[] array with role-tagged turns, plus features like prompt caching and system message handling that help manage context efficiently.
 
-The LLM Sandbox Bot API accepts only a single text message. There is no messages array. You must flatten your history into one text blob, which loses the structured role boundaries.
+The LLM Sandbox Bot API has none of this. Single text message input, no messages array, no roles, no system parameter. You flatten your entire history into one text blob, losing structured role boundaries. There is no context management layer between you and the model.
 
-The API does maintain conversation records in DynamoDB (message IDs, threading), but it does not automatically prepend prior messages to your request.
-
-What this means for you:
-- If you want multi-turn conversation, YOU must maintain a history and prepend it to every message
-- The chat UI in LLM Sandbox handles this via DynamoDB — it reconstructs context from stored messages before each call. It is not using the structured messages[] format that Anthropic's API supports.
-- If you're building your own bot/tool, you need to implement this yourself
+The API stores conversation records in DynamoDB (message IDs, threading), but does not prepend prior messages for you. The chat UI handles this reconstruction, but if you're building your own tool, you implement it yourself.
 
 The pattern: Your message to the API = prior context you assembled + the actual new message
 
-Store the original user input in your history, not the full context-stuffed payload. If you store the full message (which already includes prior context), the next turn prepends that doubled context again and it compounds exponentially.
+Store the original user input in your history, not the full context-stuffed payload — otherwise context compounds exponentially.
 
 ### 2. The API is async — no streaming, no immediate responses
 
