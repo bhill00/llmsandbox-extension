@@ -12,18 +12,21 @@ This project also serves as a **reference implementation** for building tools on
 
 ### What It Is (and Isn't)
 
-LLM Sandbox is a **privacy-by-design** deployment of LLMs via AWS Bedrock, built for NIST 800-171 compliance. It gives you access to Claude, Amazon Nova, and other Bedrock models without data leaving UCSB's controlled environment.
+LLM Sandbox is a **privacy-by-design** deployment of LLMs via AWS Bedrock, designed to meet NIST 800-171 compliance requirements. It gives you access to Claude, Amazon Nova, and other Bedrock models without data leaving UCSB's controlled environment.
+
+**Note:** The API endpoint's compliance does not automatically extend to tools that consume it. This extension, VS Code itself, and your local machine are outside the Sandbox's compliance boundary. If you're working with controlled data (CUI, ITAR, FERPA), consult your security/compliance team before using any third-party tools.
 
 **It is not** a drop-in replacement for the Anthropic API, OpenAI API, or any standard cloud LLM workflow. The architecture is fundamentally different and imposes constraints you need to design around.
 
 ### The Two Big Differences
 
-**1. The API is stateless — the model has no memory**
+**1. The model is stateless — it has no memory**
 
 Unlike the Anthropic or OpenAI APIs where you send a `messages[]` array and the API handles context, the LLM Sandbox Bot API sends one message at a time to the model. The model sees only what you put in that single message.
 
+The API does maintain conversation records in DynamoDB (message IDs, threading), but it does **not** automatically prepend prior messages to your request. The model only sees what you explicitly include.
+
 What this means for you:
-- There is no conversation history on the server side
 - If you want multi-turn conversation, YOU must maintain a history and prepend it to every message
 - The chat UI in LLM Sandbox handles this via DynamoDB — it reconstructs context from stored messages before each call. It is not using Anthropic's native conversation management.
 - If you're building your own bot/tool, you need to implement this yourself
@@ -33,7 +36,7 @@ The pattern:
 Your message to the API = prior context you assembled + the actual new message
 ```
 
-Store the original user input in your history, not the full context-stuffed payload, or your context will compound exponentially.
+Store the original user input in your history, not the full context-stuffed payload. If you store the full message (which already includes prior context), the next turn prepends that doubled context again, and it compounds exponentially. Only store what the user actually typed.
 
 **2. The API is async — no streaming, no immediate responses**
 
@@ -45,32 +48,44 @@ POST /conversation → returns messageId → poll GET /conversation/{id} → fin
 
 There are no webhooks, no streaming, no server-sent events. Plan your UX around a loading spinner, not a typing indicator.
 
+### Understanding Context, Tokens, and Cost
+
+Some terminology first:
+
+- **Context window** — the model's maximum capacity per request. Claude Sonnet 4.5 supports up to 1M tokens. This is a hard ceiling on what the model can process in a single call.
+- **Context budget** — a soft limit YOU set (default 20k in this extension) that controls when to compress older conversation turns. This exists to control cost, not because the model can't handle more.
+- **Prompt size** — the actual size of each request sent to the API, including system prompt, conversation history, and your current message.
+
 ### Token Cost Is the Real Constraint, Not Context Window Size
 
-This is the most important thing to understand. With a standard API (Anthropic, OpenAI), prompt caching means repeated context is heavily discounted — cached tokens cost up to 90% less. The LLM Sandbox has **no prompt caching**. Every token is full price, every turn.
+This is the most important thing to understand.
 
-Because context is prepended to every message, token consumption grows quadratically:
+On standard APIs (Anthropic, OpenAI), **prompt caching** reduces cost for repeated context. When you send a request with the same prefix as a prior request (e.g. system prompt + chat history), the API recognizes the overlap and charges up to 90% less for those cached tokens. This only works when the beginning of your prompt is identical to a recent request — which is naturally the case when you're appending new messages to a growing conversation.
+
+The LLM Sandbox has **no prompt caching**. Every token is full price, every turn.
+
+Because the full context is re-sent with every message, the cost per turn grows as the conversation gets longer:
 
 - Turn 1: send 500 tokens → 500 input tokens consumed
-- Turn 5: send ~2,500 context + 500 new → 3,000 input tokens for that one turn
-- Turn 10: send ~5,000 context + 500 new → 5,500 for that one turn
-- Turn 20: send ~10,000 context + 500 new → 10,500 for that one turn
+- Turn 5: send ~3,000 context + 500 new → 3,500 input tokens for that one turn
+- Turn 10: send ~7,000 context + 500 new → 7,500 for that one turn
+- Turn 20: send ~15,000 context + 500 new → 15,500 for that one turn
 
-Cumulative input tokens over 20 turns: **~100,000+**
+The cumulative total across all turns grows rapidly — over 20 turns you can easily consume **100,000+ input tokens**. And this only counts input — assistant responses (often longer than user messages) also get added to context for subsequent turns, making it grow even faster.
 
-Once you hit your context budget cap (say 20k tokens), every subsequent turn costs ~20k input tokens regardless. A 50-turn conversation after hitting the cap burns 30 turns x 20k = **600,000 input tokens** just for the second half — and that's with a modest 20k budget, not the 200k or 1M context windows some models support.
+Once you hit your context budget cap (say 20k tokens), every subsequent turn costs ~20k input tokens regardless of compression strategy. A 50-turn conversation after hitting the cap burns 30 turns x 20k = **600,000 input tokens** just for the second half — and that's with a modest 20k budget, not the 200k or 1M context windows some models support.
 
-Even a seemingly small conversation becomes expensive fast. **Keep conversations short and reset often.** This is not a platform for marathon coding sessions with a single thread.
+**Keep conversations short and reset often.** This is not a platform for marathon sessions with a single thread.
 
 ### Practical Payload Limits
 
-Beyond token cost, there are hard infrastructure limits:
+Beyond token cost, there are server-side infrastructure limits you should be aware of (these are not configurable by the user):
 
-- **AWS API Gateway** — 10MB payload limit, 29-second default timeout
-- **DynamoDB items** — 400KB per item. The messageMap returned by GET grows with every turn.
+- **AWS API Gateway** — 10MB payload limit, configurable timeout (default 29 seconds). Your outbound requests are typically small, but GET responses returning large messageMap histories may approach these limits.
+- **DynamoDB items** — 400KB per item. The server stores conversation data in DynamoDB, and the messageMap grows with every turn. Long conversations with large code blocks may cause slow responses or partial data.
 - **Lambda** (if behind the gateway) — 6MB synchronous payload limit
 
-Long conversations will eventually hit these walls even before you run out of context budget. The GET endpoint returning the full messageMap for a 100-turn conversation with large code blocks can approach these limits.
+Long conversations will eventually hit these walls. If you notice degraded performance, reset the conversation.
 
 ### Context Compression Strategies
 
@@ -111,7 +126,7 @@ All three are implemented in this extension's `server.py` if you want reference 
 
 **Switch models:** Just change the `model` string in the payload. Context is client-managed, so there's no session to rebuild.
 
-**Available models:** Claude (claude-v4.5-sonnet, claude-v4-sonnet, claude-v3.5-sonnet), Amazon Nova, and other AWS Bedrock models available in the sandbox.
+**Available models:** Check with your sandbox administrator for the exact list. Common models include Claude (claude-v4.5-sonnet, claude-v4-sonnet, claude-v3.5-sonnet) and Amazon Nova. The model string is passed directly to the API.
 
 ### Next Steps: Local LLM Orchestration Layer
 
@@ -211,7 +226,7 @@ All settings are under `llmsandbox.*` in VS Code settings.
 - `contextBudget` (default: 20000) — Context budget in estimated tokens
 - `contextStrategy` (default: summary) — Compression strategy: recent, summary, or key-facts
 - `recentTurnsToKeep` (default: 6) — Number of recent turns kept verbatim
-- `enableReasoning` (default: false) — Enable extended thinking/reasoning
+- `enableReasoning` (default: false) — Enable extended thinking/reasoning mode. The model may spend more time reasoning before responding, increasing both latency and token consumption. Only available on compatible models.
 - `autoIncludeActiveFile` (default: true) — Auto-include the open file as context
 - `systemPrompt` (default: built-in) — Custom system prompt override
 - `pollInterval` (default: 2) — Seconds between polling attempts
