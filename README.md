@@ -127,6 +127,8 @@ All three are implemented in this extension's `server.py` if you want reference 
 
 **Available models:** Check with your sandbox administrator for the exact list. Common models include Claude (claude-v4.5-sonnet, claude-v4-sonnet, claude-v3.5-sonnet) and Amazon Nova. The model string is passed directly to the API.
 
+**Content types:** The API's message content field is a list, supporting multiple content types per message. Text and images (base64-encoded) are confirmed working. The content format is `[{"contentType": "text", "body": "..."}, {"contentType": "image", "mediaType": "image/png", "body": "<base64>"}]`. Tool use content types (`toolUse`, `toolResult`) are accepted by the API but do not currently produce responses through the published Bot API.
+
 ### Next Steps: Local LLM Orchestration Layer
 
 The token cost problem and lack of prompt caching suggest a natural architecture improvement: a **local small LLM** (e.g. Qwen, Llama, Mistral via Ollama) that handles the routine work — maintaining conversational context, summarizing history, doing RAG retrieval, routing simple questions — and only defers to the Sandbox API for tasks that require the full reasoning capability of Claude or other large models.
