@@ -97,13 +97,6 @@
           "editPresentation": "multilineText",
           "order": 11
         },
-        "llmsandbox.pollInterval": {
-          "type": "number",
-          "default": 2,
-          "minimum": 1,
-          "description": "Seconds between polling attempts when waiting for a response",
-          "order": 12
-        },
         "llmsandbox.pollTimeout": {
           "type": "number",
           "default": 30,

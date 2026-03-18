@@ -38,9 +38,10 @@ RECENT_TURNS_TO_KEEP = int(os.environ.get("RECENT_TURNS_TO_KEEP", "6"))
 ENABLE_REASONING = os.environ.get("ENABLE_REASONING", "false").lower() == "true"
 AUTO_INCLUDE_ACTIVE_FILE = os.environ.get("AUTO_INCLUDE_ACTIVE_FILE", "true").lower() == "true"
 CUSTOM_SYSTEM_PROMPT = os.environ.get("SYSTEM_PROMPT", "")
-POLL_INTERVAL = max(1, int(os.environ.get("POLL_INTERVAL", "2")))
 POLL_TIMEOUT = max(5, int(os.environ.get("POLL_TIMEOUT", "30")))
-POLL_MAX_ATTEMPTS = max(1, POLL_TIMEOUT // POLL_INTERVAL)
+POLL_INITIAL_INTERVAL = float(os.environ.get("POLL_INITIAL_INTERVAL", "0.3"))
+POLL_BACKOFF_MULTIPLIER = float(os.environ.get("POLL_BACKOFF_MULTIPLIER", "1.5"))
+POLL_MAX_INTERVAL = float(os.environ.get("POLL_MAX_INTERVAL", "5.0"))
 CHARS_PER_TOKEN = 4  # rough estimate
 
 # ---------------------------------------------------------------------------
@@ -319,16 +320,35 @@ def build_context(
 # Polling
 # ---------------------------------------------------------------------------
 def poll_for_reply(conv_id: str, message_id: str) -> str:
-    """Poll the per-message endpoint until the assistant reply appears."""
-    for attempt in range(POLL_MAX_ATTEMPTS):
-        time.sleep(POLL_INTERVAL)
+    """Poll the per-message endpoint until the assistant reply appears.
+
+    Uses adaptive exponential backoff: starts at POLL_INITIAL_INTERVAL,
+    multiplies by POLL_BACKOFF_MULTIPLIER each attempt, caps at POLL_MAX_INTERVAL.
+    """
+    interval = POLL_INITIAL_INTERVAL
+    deadline = time.monotonic() + POLL_TIMEOUT
+    attempt = 0
+
+    while time.monotonic() < deadline:
+        time.sleep(interval)
+        attempt += 1
         resp = requests.get(
             f"{API_URL}/conversation/{conv_id}/{message_id}",
             headers=BOT_HEADERS,
         )
-        if resp.status_code == 404:
-            log.debug("Poll attempt %d/%d — reply not created yet", attempt + 1, POLL_MAX_ATTEMPTS)
+
+        # 429 rate limited — jump to max interval, don't count as attempt
+        if resp.status_code == 429:
+            log.warning("Poll attempt %d — rate limited, backing off to %.1fs", attempt, POLL_MAX_INTERVAL)
+            interval = POLL_MAX_INTERVAL
+            attempt -= 1
             continue
+
+        if resp.status_code == 404:
+            log.debug("Poll attempt %d — reply not created yet (next in %.1fs)", attempt, interval)
+            interval = min(interval * POLL_BACKOFF_MULTIPLIER, POLL_MAX_INTERVAL)
+            continue
+
         resp.raise_for_status()
         data = resp.json()
 
@@ -338,7 +358,8 @@ def poll_for_reply(conv_id: str, message_id: str) -> str:
             if content:
                 return content[0].get("body", "")
 
-        log.debug("Poll attempt %d/%d — no reply yet", attempt + 1, POLL_MAX_ATTEMPTS)
+        log.debug("Poll attempt %d — no reply yet (next in %.1fs)", attempt, interval)
+        interval = min(interval * POLL_BACKOFF_MULTIPLIER, POLL_MAX_INTERVAL)
 
     raise HTTPException(status_code=504, detail="Timed out waiting for response")
 
@@ -409,6 +430,8 @@ def status():
         "context_strategy": CONTEXT_STRATEGY,
         "enable_reasoning": ENABLE_REASONING,
         "recent_turns_to_keep": RECENT_TURNS_TO_KEEP,
-        "poll_interval": POLL_INTERVAL,
+        "poll_initial_interval": POLL_INITIAL_INTERVAL,
+        "poll_backoff_multiplier": POLL_BACKOFF_MULTIPLIER,
+        "poll_max_interval": POLL_MAX_INTERVAL,
         "poll_timeout": POLL_TIMEOUT,
     }

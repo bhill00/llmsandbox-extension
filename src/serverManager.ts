@@ -103,7 +103,6 @@ export class ServerManager {
     const enableReasoning = config.get<boolean>("enableReasoning", false);
     const autoIncludeActiveFile = config.get<boolean>("autoIncludeActiveFile", true);
     const systemPrompt = config.get<string>("systemPrompt", "");
-    const pollInterval = config.get<number>("pollInterval", 2);
     const pollTimeout = config.get<number>("pollTimeout", 30);
 
     // Ensure venv and dependencies
@@ -134,7 +133,6 @@ export class ServerManager {
           ENABLE_REASONING: String(enableReasoning),
           AUTO_INCLUDE_ACTIVE_FILE: String(autoIncludeActiveFile),
           SYSTEM_PROMPT: systemPrompt,
-          POLL_INTERVAL: String(pollInterval),
           POLL_TIMEOUT: String(pollTimeout),
         },
       }
