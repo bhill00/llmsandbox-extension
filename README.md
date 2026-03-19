@@ -113,6 +113,24 @@ All three are implemented in this extension's `server.py` if you want reference 
 - You need low-latency, high-throughput production workloads
 - Your data has no compliance requirements and a commercial API would be simpler
 
+### Bot Configuration (Important)
+
+The Sandbox does **not** support per-request inference parameters. Values like `temperature` and `max_tokens` are configured on the **bot** in the Sandbox dashboard — they cannot be overridden per-request. This means the bot's settings apply to every call regardless of what the client requests.
+
+**Recommended settings for coding assistant use:**
+
+| Setting | Value | Why |
+|---|---|---|
+| Max generation | 16000 | File edits can be long |
+| Temperature | 0.2 | Low for reliable structured output |
+| Top-p | 0.95 | Slightly focused |
+| Top-k | 128 | Default is fine |
+| Reasoning budget | 1024 (minimum) | Extension sends `enableReasoning: false` to suppress |
+
+**If you also use the same bot for RAG pipelines** (e.g., via the [proxy](https://github.com/bhill00/llmsandbox-openai-proxy)), temperature 0.2 works well for both use cases. Higher values (0.6+) cause the model to deviate from tool-use protocols and hallucinate facts in RAG responses.
+
+See the [proxy README](https://github.com/bhill00/llmsandbox-openai-proxy#important-bot-configuration) for a full comparison table across use cases.
+
 ### Quick API Reference
 
 **Auth:** `x-api-key` header
@@ -194,7 +212,7 @@ The extension automatically manages the Python server — creates a virtual envi
 Download the `.vsix` file from the [Releases](../../releases) page, then either:
 
 ```bash
-code --install-extension llmsandbox-extension-0.1.0.vsix
+code --install-extension llmsandbox-extension-0.2.0.vsix
 ```
 
 Or in VS Code: Extensions sidebar > `...` menu > "Install from VSIX..."
@@ -209,7 +227,7 @@ cd llmsandbox-extension
 npm install
 npm run compile
 npx @vscode/vsce package --allow-missing-repository
-code --install-extension llmsandbox-extension-0.1.0.vsix
+code --install-extension llmsandbox-extension-0.2.0.vsix
 ```
 
 ## Getting Started
