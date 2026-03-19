@@ -2,7 +2,7 @@
   "name": "llmsandbox-extension",
   "displayName": "LLM Sandbox",
   "description": "Agent-style coding assistant using UCSB LLM Sandbox Bot API",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "unsped",
   "engines": {
     "vscode": "^1.110.0"
