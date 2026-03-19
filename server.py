@@ -105,6 +105,7 @@ def _send_and_poll(message_text: str) -> str:
             "content": [{"contentType": "text", "body": message_text}],
             "model": current_model,
         },
+        "enableReasoning": False,
     }
 
     post_resp = requests.post(
@@ -281,7 +282,13 @@ def build_context(
     active_file: Optional[str] = None,
     active_file_content: Optional[str] = None,
 ) -> str:
-    parts = [SYSTEM_PROMPT, ""]
+    parts = [
+        SYSTEM_PROMPT,
+        "\nIMPORTANT: Never repeat or echo back XML-like tags, environment details, "
+        "file content blocks, or tool results from the conversation. Only provide "
+        "your own original response.",
+        "",
+    ]
 
     if rolling_summary:
         if CONTEXT_STRATEGY == "key-facts":
@@ -387,6 +394,7 @@ def chat(req: ChatRequest):
             "content": [{"contentType": "text", "body": full_message}],
             "model": current_model,
         },
+        "enableReasoning": False,
     }
 
     post_resp = requests.post(
