@@ -253,8 +253,7 @@ All settings are under `llmsandbox.*` in VS Code settings.
 - `enableReasoning` (default: false) — Enable extended thinking/reasoning mode. The model may spend more time reasoning before responding, increasing both latency and token consumption. Only available on compatible models.
 - `autoIncludeActiveFile` (default: true) — Auto-include the open file as context
 - `systemPrompt` (default: built-in) — Custom system prompt override
-- `pollInterval` (default: 2) — Seconds between polling attempts
-- `pollTimeout` (default: 30) — Max seconds to wait for a response
+- `pollTimeout` (default: 30) — Max seconds to wait for a response (minimum: 5). Polling uses adaptive exponential backoff: starts at 0.3s, multiplies by 1.5x after each retry, caps at 5s per interval.
 
 Changing settings requires a server restart. Click the restart button in the chat toolbar or run the "LLM Sandbox: Restart Server" command.
 
